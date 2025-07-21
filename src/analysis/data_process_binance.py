@@ -2,7 +2,7 @@ import pandas as pd
 import logging
 import numpy as np
 import matplotlib as plt
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any
 from pathlib import Path
 from arch import arch_model
 from statsmodels.tsa.arima.model import ARIMA
@@ -122,3 +122,7 @@ class DataProcessor:
             self.logger.error(f"Error en pipeline: {str(e)}")
             return None
         
+    @staticmethod    
+    def null_precentage(df: pd.DataFrame) -> Optional[Any]:
+        nulls = (df.isna().mean() * 100).round(2)
+        return nulls
