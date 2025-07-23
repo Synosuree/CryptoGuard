@@ -51,9 +51,17 @@ class CoinGeckoClient:
         
     #Para Debugg
     def get_coin_data(self, coin_id: str) -> Dict[str, Any]:
-        """Obtiene TODOS los datos crudos de la moneda"""
-        logger.info(f"Obteniendo datos completos para {coin_id}")
-        return self._make_request(f"/coins/{coin_id}?localization=false&tickers=false&market_data=true&community_data=true&developer_data=true")
+       """Obtiene todos los datos crudos de la moneda con parámetros optimizados"""
+       logger.info(f"Obteniendo datos completos para {coin_id}")
+       params = {
+            'localization': 'false',
+            'tickers': 'true',  # Habilitado para obtener datos de exchanges
+            'market_data': 'true',
+            'community_data': 'true',
+            'developer_data': 'true',
+            'sparkline': 'false'
+            }
+       return self._make_request(f"/coins/{coin_id}", params=params)
     
     def get_coin_metrics(self, coin_id: str) -> Dict[str, Any]:
         """Versión corregida que mapea exactamente la estructura de la API"""
@@ -66,7 +74,7 @@ class CoinGeckoClient:
         
         # Extracción robusta con valores por defecto
         market_data = raw_data.get('market_data', {})
-        community_data = raw_data.get('community_data', {})
+        tickers_data = raw_data.get('tickers', [])
         developer_data = raw_data.get('developer_data', {})
         
         return {
@@ -76,21 +84,47 @@ class CoinGeckoClient:
             'name': raw_data.get('name'),
             
             # Datos de desarrolladores
-            'dev_score': developer_data.get('score'),  # Cambiado de 'developer_score'
+            'dev_stars': developer_data.get('stars'),  #Confianza en developers
+            'forks': developer_data.get('forks'), #Actividad en el desarrollo
+            'pull_merge_request': developer_data.get('pull_requests_merged'), #Actividad en el desarrollo
+
             
-            # Comunidad
-            'twitter_followers': community_data.get('twitter_followers'),  # Cambiado de 'community'
             
-            # Liquidez
+            # Comunidad y Sentimiento
+            ## Indicador de sentimiento alcista o bajista entre traders
+            'sentiment_up': raw_data.get('sentiment_votes_up_percentage'),
+            'sentiment_dwn': raw_data.get('sentiment_votes_down_percentage'),
+            #N° usuarios que siguen CC en CoinGecko / Interes puede correlacionarse con interés del mercado
+            'watch_list': raw_data.get('watchlist_portfolio_users'), 
+            
+            # Liquidez y Volumen
             'liquidity_score': raw_data.get('liquidity_score'),
+            'total_volume': market_data.get('total_volume', {}).get('usd'), # +Volumen +Liquidez
             
             # Mercado
-            'current_price': market_data.get('current_price', {}).get('usd'),
-            'ath_change': market_data.get('ath_change_percentage', {}).get('usd'),  # Corregido de 'ath_score'
-            'market_cap': market_data.get('market_cap', {}).get('usd'),
-            'circulating_supply': market_data.get('circulating_supply'),
+            'current_price': market_data.get('current_price', {}).get('usd'), #Variable Obj (target)
+            'high_24h': market_data.get('high_24h',{}).get('usd'),
+            'low_24h': market_data.get('low_24h',{}).get('usd'),
+            'price_change%_24h': market_data.get('price_change_percentage_24h'),
+            
+            'market_cap': market_data.get('market_cap', {}).get('usd'), #Tamaño y estabilidad del mercado
+            'circulating_supply': market_data.get('circulating_supply'), #Monedas en circulación
             'total_supply': market_data.get('total_supply'),
-            'max_supply': market_data.get('max_supply'),
+            'max_supply': market_data.get('max_supply'), #Escasez programada es un factor deflacionario clave
+            
+            # Datos Historicos
+            'ath': market_data.get('ath', {}).get('usd'),
+            'ath_change': market_data.get('ath_change_percentage', {}).get('usd'),
+            'atl': market_data.get('atl',{}).get('usd'),
+
+            # Actividad de red
+            'block_time': raw_data.get('block_time_in_minutes'), #Afecta la emisión de nuevos CC y costos de minería.
+            'hashing_alg': raw_data.get('hashing_algorithm'), #Seguridad de la red -> impacta confianza}
+
+            # Datos de Exchanges
+            'last': tickers_data.get('last'),
+            'volume': tickers_data.get('volume'),
+            'trust_score': tickers_data.get('trust_score'),         
             
             # Metadata
             'last_updated': raw_data.get('last_updated')

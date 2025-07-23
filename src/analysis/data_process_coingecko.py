@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 class CoinDataProcessor:
     @staticmethod
     def clean_coin_metrics(raw_data: Dict[str, Any]) -> Dict[str, Any]:
-        #Procesado de datos+
+        #Procesado de datos
         logger.info('Procesando datos de la moneda...')
         
         processed = {
@@ -72,6 +72,10 @@ class CoinDataProcessor:
             data['fdv'] = data['current_price'] / data['total_supply']
         else:
             data['fdv'] = None
+
+        #Rango diario relativo
+        data['range_24h_pct'] = (data['high_24h'] - data['low_24h']) / data['current_price']
+        
 
         #Clasificación de liquidez
         if data['liquidity'] is not None:
