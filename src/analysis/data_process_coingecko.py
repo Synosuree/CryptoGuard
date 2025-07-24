@@ -2,36 +2,24 @@ import logging
 import numpy as np
 import pandas as pd
 from typing import Dict, Any, Optional
+from sklearn.preprocessing import MinMaxScaler
 
 logger = logging.getLogger(__name__)
 
 class CoinDataProcessor:
     @staticmethod
-    def clean_coin_metrics(raw_data: Dict[str, Any]) -> Dict[str, Any]:
+    def process_metrics(raw_data: Dict[str, Any]) -> Dict[str, Any]:
         #Procesado de datos
         logger.info('Procesando datos de la moneda...')
         
-        processed = {
-            'id': raw_data.get('id'),
-            'symbol': raw_data.get('symbol'),
-            'name': raw_data.get('name'),
-            'dev_score': CoinDataProcessor.safe_float(raw_data.get('developer_score')),
-            'community': CoinDataProcessor.safe_int(raw_data.get('community_data', {}).get('twitter_followers')),
-            'liquidity': CoinDataProcessor.safe_float(raw_data.get('liquidity_score')),
-            'ath_change': CoinDataProcessor.safe_float(
-                raw_data.get('market_data', {}).get('ath_change_percentage', {}).get('usd')),
-            'current_price': CoinDataProcessor.safe_float(
-                raw_data.get('market_data', {}).get('current_price', {}).get('usd')),
-            'market_cap': CoinDataProcessor.safe_float(
-                raw_data.get('market_data', {}).get('market_cap', {}).get('usd')),
-            'circulating_supply': CoinDataProcessor.safe_float(
-                raw_data.get('market_data', {}).get('circulating_supply')),
-            'total_supply': CoinDataProcessor.safe_float(
-                raw_data.get('market_data', {}).get('total_supply')),
-            'max_supply': CoinDataProcessor.safe_float(
-                raw_data.get('market_data', {}).get('max_supply')),
-            'last_updated': raw_data.get('last_updated')
-        }
+        # Validación de tipos solo floats
+        float_keys=['dev_stars', 'forks', 'pull_merge_request', 'sentiment_up', 'sentiment_dwn',
+                    'watch_list', 'liquidity_score', 'total_volume', 'current_price', 'high_24h',
+                    'low_24h', 'market_cap', 'circulating_supply', 'total_supply', 'max_supply',
+                    'ath', 'atl', 'price_1d_ago', 'price_7d_ago']
+
+        for key in float_keys:
+                raw_data[key] = CoinDataProcessor.safe_float(raw_data.get(key))
 
         #Calculo de métricas derivadas
         processed = CoinDataProcessor.calculate_derived_metrics(processed)
@@ -61,52 +49,133 @@ class CoinDataProcessor:
         
     @staticmethod
     def calculate_derived_metrics(data: Dict[str, Any]) -> Dict[str, Any]:
-        #Proporción de suministro en circulación
+        # Proporción de suministro en circulación
         if data['total_supply'] and data['circulating_supply']:
             data['supply_ratio'] = data['circulating_supply'] / data['total_supply']
         else:
             data['supply_ratio'] = None
 
-        #Valorización totalmente diluida
+        # Fully Diluted Valuation (precio * total_supply)
         if data['current_price'] and data['total_supply']:
-            data['fdv'] = data['current_price'] / data['total_supply']
+            data['fdv'] = data['current_price'] * data['total_supply']
         else:
             data['fdv'] = None
 
-        #Rango diario relativo
-        data['range_24h_pct'] = (data['high_24h'] - data['low_24h']) / data['current_price']
-        
+        # Volatilidad relativa en 24h
+        if data['high_24h'] and data['low_24h'] and data['current_price']:
+            data['range_24h_pct'] = (data['high_24h'] - data['low_24h']) / data['current_price']
+        else:
+            data['range_24h_pct'] = None
 
-        #Clasificación de liquidez
-        if data['liquidity'] is not None:
-            if data['liquidity'] > 0.8:
+        # Volumen / Market Cap ratio
+        if data['total_volume'] and data['market_cap']:
+            data['vmkr'] = data['total_volume'] / data['market_cap']
+        else:
+            data['vmkr'] = None
+
+        # Distancia al ATH/ATL
+        if data['ath'] and data['current_price']:
+            data['ath_distance_pct'] = (data['ath'] - data['current_price']) / data['ath']
+        else:
+            data['ath_distance_pct'] = None
+
+        if data['atl'] and data['current_price']:
+            data['atl_distance_pct'] = (data['current_price'] - data['atl']) / data['atl']
+        else:
+            data['atl_distance_pct'] = None
+
+        # Momentum
+        if data['price_1d_ago'] and data['current_price']:
+            data['momentum_1d'] = data['current_price'] / data['price_1d_ago'] - 1
+        else:
+            data['momentum_1d'] = None
+
+        if data['price_7d_ago'] and data['current_price']:
+            data['momentum_7d'] = data['current_price'] / data['price_7d_ago'] - 1
+        else:
+            data['momentum_7d'] = None
+
+        # Circulating ratio
+        if data['max_supply'] not in (None, 0):
+            data['circulating_ratio'] = data['circulating_supply'] / data['max_supply']
+            data['has_max_supply'] = 1
+        else:
+            data['has_max_supply'] = 0
+
+        # Inflación
+        if data['total_supply'] and data['circulating_supply']:
+            data['inflation_ratio'] = (data['total_supply'] - data['circulating_supply']) / data['total_supply']
+        else:
+            data['inflation_ratio'] = None
+
+        # Sentimiento
+        if data['sentiment_dwn'] is not None:
+            data['sentiment_ratio'] = data['sentiment_up'] / (data['sentiment_dwn'] + 1e-6)
+        else:
+            data['sentiment_ratio'] = None
+
+        if data['watch_list'] and data['market_cap']:
+            data['wtchlist_per_mcap'] = data['watch_list'] / (data['market_cap'] + 1e-6)
+        else:
+            data['wtchlist_per_mcap'] = None
+
+        # Liquidez
+        if data['liquidity_score'] is not None:
+            if data['liquidity_score'] > 0.8:
                 data['liquidity_rating'] = 'High'
-            elif data['liquidity'] > 0.5:
+            elif data['liquidity_score'] > 0.5:
                 data['liquidity_rating'] = 'Mid'
             else:
                 data['liquidity_rating'] = 'Low'
         else:
             data['liquidity_rating'] = 'Unknown'
-        
+
         return data
+    @staticmethod
+    def scale_data(data: Dict[str, Any]) -> pd.DataFrame:
+        logger.info('Escalando datos y convertiendo en dataframe')
+        df = CoinDataProcessor.to_dataframe(data)
+        
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+
+        if not numeric_cols:
+            logger.warning('No hay columnas numéricas para escalar')
+            return df
+        
+        scaler = MinMaxScaler()
+        df[numeric_cols] = scaler.fit_transform(df[numeric_cols])
+        
+        logger.info(f'{len(numeric_cols)} columnas escalas con MinMaxScaler')
+        return df
+
+
+
     
     @staticmethod
     def to_dataframe(clean_data: Dict[str, Any]) -> pd.DataFrame:
-        logger.info('Convirtiendo datos en dataframe')
+        logger.info('Convirtiendo datos en DataFrame')
 
         df = pd.DataFrame([clean_data])
-        
+
+        # Detectar y convertir automáticamente columnas numéricas
+        for col in df.columns:
+            try:
+                # Intentar convertir si el valor es tipo numérico o str convertible
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+            except Exception:
+                continue  # Deja tal cual si no se puede convertir
+
+        # Manejar fechas si está presente
+        if 'last_updated' in df.columns:
+            try:
+                df['last_updated'] = pd.to_datetime(df['last_updated'], errors='coerce')
+            except Exception as e:
+                logger.warning(f"Error convirtiendo 'last_updated': {str(e)}")
+
+        # Opcional: remplazar NaN por None (para compatibilidad con otras herramientas)
         df = df.replace({np.nan: None})
 
-        numeric_cols = ['dev_score', 'liquidity', 'ath_change', 'current_price', 'market_cap', 'circulating_supply', 'total_supply', 'max_supply']
-        for col in numeric_cols:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-
-        if 'last_updated' in df.columns:
-            df['last_updated'] = pd.to_datetime(df['last_updated'])
-        
-        logger.debug(f'Dataframe generado con {len(df.columns)} columnas')
+        logger.debug(f'DataFrame generado con {len(df.columns)} columnas')
         return df
     
     @staticmethod
@@ -130,3 +199,14 @@ class CoinDataProcessor:
     def null_precentage(df: pd.DataFrame) -> Optional[Any]:
         nulls = (df.isna().mean() * 100).round(2)
         return nulls       
+    
+    def process_coin_data(raw_data: Dict[str, Any]) -> Optional[pd.DataFrame]:
+        logger.info('Iniciando procesamietno completo de los datos de CoinGecko')
+
+        if not CoinDataProcessor.validate_data(raw_data):
+            logger.error('Datos Invalidos, abortando procesamiento')
+            return None
+        
+        structured_data = CoinDataProcessor.process_metrics(raw_data)
+        df = CoinDataProcessor.scale_data(structured_data)
+        return df

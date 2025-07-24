@@ -5,13 +5,13 @@ import matplotlib as plt
 from typing import Optional, Tuple, Any
 from pathlib import Path
 from arch import arch_model
-from statsmodels.tsa.arima.model import ARIMA
 from sklearn.preprocessing import MinMaxScaler
 
 
 class DataProcessor:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
+        self.scaler = MinMaxScaler()
 
     def process_to_dataframe(self, klines: list) -> Optional[pd.DataFrame]:
         try:
@@ -86,8 +86,13 @@ class DataProcessor:
             ]
 
             #Escalado
-            X = self.scaler.fit_transform(df[features].dropna())
+            X = df[features].dropna()
             y = df['target'].dropna()
+
+            #Alinear indices
+            valid_idx = X.index.intersection(y.index)
+            X = X.loc[valid_idx]
+            y = y.loc[valid_idx]
 
             return X, y
         except Exception as e:
@@ -104,18 +109,41 @@ class DataProcessor:
             self.logger.error(f"Error guardando datos: {str(e)}")
             return False
     
+    def binance_scaler(self, df: pd.DataFrame) -> pd.DataFrame:
+        self.logger.info('Escalando columnas numéricas del dataframe de binance')
+
+        numeric_cols = [
+            'log_returns', 'taker_buy_ratio', 'liquidity_gap',
+            'garch_volatility', 'macd', 'sma_20'
+        ]
+
+        numeric_cols = [col for col in numeric_cols if col in df.columns]
+
+        if not numeric_cols:
+            self.logger.warning('No se encontraron columnas numéricas a para escalar.')
+            return df
+        
+        scaler = MinMaxScaler()
+        df[numeric_cols] = scaler.fit_transform(df[numeric_cols])
+
+        self.logger.info(f'Escalado compltado para columnas {numeric_cols}')
+        return df
+    
     def full_pipeline(self, klines: list, save_as: str = None) -> Optional[pd.DataFrame]:
         #Ejecuta todo el pipeline de procesamiento
+        
         try:
             df = self.process_to_dataframe(klines)
             if df is None:
                 return None
-            
+            self.logger.debug(f'Dimensión inicial del dataframe: {df.shape}')
             df = self.add_technical_features(df)
             df = self.calculate_volatility(df)
+            df = self.binance_scaler(df)
 
             if save_as:
                 self.save_data(df, save_as)
+            self.logger.debug(f'Dimensión final del dataframe: {df.shape}')
 
             return df
         except Exception as e:

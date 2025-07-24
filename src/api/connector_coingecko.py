@@ -5,6 +5,7 @@ import requests
 from typing import Dict, Any, Optional
 import pandas as pd
 
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -116,6 +117,9 @@ class CoinGeckoClient:
             'ath': market_data.get('ath', {}).get('usd'),
             'ath_change': market_data.get('ath_change_percentage', {}).get('usd'),
             'atl': market_data.get('atl',{}).get('usd'),
+            'price_1d_ago': market_data.get('price_change_percentage_24h_in_currency',{}).get('usd'),
+            'price_7d_ago': market_data.get('price_change_percentage_7d_in_currency', {}).get('usd'),
+
 
             # Actividad de red
             'block_time': raw_data.get('block_time_in_minutes'), #Afecta la emisión de nuevos CC y costos de minería.
