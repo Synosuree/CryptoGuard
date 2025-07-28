@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 
 class CoinDataProcessor:
     @staticmethod
+    #Esta función hace uso de calculate_derived_metrics
     def process_metrics(raw_data: Dict[str, Any]) -> Dict[str, Any]:
         #Procesado de datos
         logger.info('Procesando datos de la moneda...')
@@ -20,7 +21,7 @@ class CoinDataProcessor:
 
         for key in float_keys:
                 raw_data[key] = CoinDataProcessor.safe_float(raw_data.get(key))
-
+        processed = raw_data
         #Calculo de métricas derivadas
         processed = CoinDataProcessor.calculate_derived_metrics(processed)
 
@@ -132,11 +133,21 @@ class CoinDataProcessor:
 
         return data
     @staticmethod
+    #Al escalar se usa to_dataframe
     def scale_data(data: Dict[str, Any]) -> pd.DataFrame:
         logger.info('Escalando datos y convertiendo en dataframe')
         df = CoinDataProcessor.to_dataframe(data)
+
+        #variables que no se deben escalar 
+        non_scalable_cols = ['id', 'symbol', 'name', 'liquidity_rating', 'liquidity_score']
         
-        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        numeric_cols = [
+            col for col in  df.select_dtypes(include=[np.number]).columns
+            if col not in non_scalable_cols
+        ]
+        if df.shape[0] <= 1:
+            logger.warning('Solo hay una fila, se omite el escalado')
+            return df
 
         if not numeric_cols:
             logger.warning('No hay columnas numéricas para escalar')
@@ -157,13 +168,15 @@ class CoinDataProcessor:
 
         df = pd.DataFrame([clean_data])
 
+        exclude_cols = ['id', 'symbol', 'name', 'hashing_alg', 'tickers', 'last_updated', 'liquidity_rating']
         # Detectar y convertir automáticamente columnas numéricas
-        for col in df.columns:
-            try:
-                # Intentar convertir si el valor es tipo numérico o str convertible
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-            except Exception:
-                continue  # Deja tal cual si no se puede convertir
+        for col in df.columns :
+            if col not in exclude_cols:
+                try:
+                    # Intentar convertir si el valor es tipo numérico o str convertible
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+                except Exception:
+                    continue  # Deja tal cual si no se puede convertir
 
         # Manejar fechas si está presente
         if 'last_updated' in df.columns:
@@ -185,7 +198,7 @@ class CoinDataProcessor:
         required_fields = ['id', 'symbol', 'current_price', 'market_cap']
 
         for field in required_fields:
-            if not clean_data(field):
+            if field not in clean_data[field] or clean_data[field] in (None, '', 0):
                 logger.error(f'Campo requerido faltante: {field}')
                 return False
             
@@ -200,13 +213,12 @@ class CoinDataProcessor:
         nulls = (df.isna().mean() * 100).round(2)
         return nulls       
     
-    def process_coin_data(raw_data: Dict[str, Any]) -> Optional[pd.DataFrame]:
-        logger.info('Iniciando procesamietno completo de los datos de CoinGecko')
-
-        if not CoinDataProcessor.validate_data(raw_data):
-            logger.error('Datos Invalidos, abortando procesamiento')
-            return None
+    
+    @staticmethod
+    def full_pipeline(raw_metrics: Dict[str, Any]) -> pd.DataFrame:
+        if not CoinDataProcessor.validate_data(raw_metrics):
+            raise ValueError('Las métricas no son válidas o están incompletas')
         
-        structured_data = CoinDataProcessor.process_metrics(raw_data)
-        df = CoinDataProcessor.scale_data(structured_data)
+        processed = CoinDataProcessor.process_metrics(raw_metrics)
+        df = CoinDataProcessor.scale_data(processed)
         return df

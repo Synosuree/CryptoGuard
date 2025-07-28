@@ -23,7 +23,7 @@ class DataProcessor:
 
             #Conversión de tipos
             numeric_cols = ['open', 'high','low','close','volume', 'quote_volume', 'trades', 'taker_buy_base', 'taker_buy_quote']
-            df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, error='coerce')
+            df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors='coerce')
 
             df['timestamps'] = pd.to_datetime(df['timestamp'], unit='ms')
 

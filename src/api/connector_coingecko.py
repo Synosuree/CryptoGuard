@@ -77,6 +77,15 @@ class CoinGeckoClient:
         market_data = raw_data.get('market_data', {})
         tickers_data = raw_data.get('tickers', [])
         developer_data = raw_data.get('developer_data', {})
+
+        tickers_info = [
+            {
+                'last': t.get('last'),
+                'volume': t.get('volume'),
+                'trust_score': t.get('trust_score')
+            }
+            for t in tickers_data if isinstance(t, dict)
+        ]
         
         return {
             # Identificación
@@ -126,9 +135,7 @@ class CoinGeckoClient:
             'hashing_alg': raw_data.get('hashing_algorithm'), #Seguridad de la red -> impacta confianza}
 
             # Datos de Exchanges
-            'last': tickers_data.get('last'),
-            'volume': tickers_data.get('volume'),
-            'trust_score': tickers_data.get('trust_score'),         
+            'tickers':tickers_info,         
             
             # Metadata
             'last_updated': raw_data.get('last_updated')

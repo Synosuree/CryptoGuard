@@ -47,22 +47,8 @@ class BinanceClient:
                 start_str = f"{days} days ago UTC"
             )
 
-            return self.processKlines(klines)
+            return klines
         except Exception as e:
             logger.error(f"Error obteniendo datos para {symbol}: {str(e)}")
             return None
         
-    @staticmethod
-    def processKlines(klines) -> Dict:
-        cols =  ['timestamp', 'open', 'high', 'low', 'close', 'volume', 
-                'close_time', 'quote_volume', 'trades', 
-                'taker_buy_base', 'taker_buy_quote', 'ignore']
-        df = pd.DataFrame(klines, columns=cols)
-
-         # Convertir tipos de datos
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        numeric_cols = ['open', 'high', 'low', 'close', 'volume', 
-                    'quote_volume', 'taker_buy_base', 'taker_buy_quote']
-        df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, axis=1)
-        
-        return df.set_index('timestamp')
