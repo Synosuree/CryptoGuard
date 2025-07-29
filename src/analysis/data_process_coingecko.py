@@ -198,12 +198,14 @@ class CoinDataProcessor:
         required_fields = ['id', 'symbol', 'current_price', 'market_cap']
 
         for field in required_fields:
-            if field not in clean_data[field] or clean_data[field] in (None, '', 0):
+            if field not in clean_data:
                 logger.error(f'Campo requerido faltante: {field}')
                 return False
-            
+            if clean_data[field] in (None, '', 0):
+                logger.error(f'Campo requerido inválido o vacío: {field}')
+
         if clean_data['current_price'] <= 0:
-            logger.error ("Precio Actual Invalido (<= 0)")
+            logger.error('Precio actual inválido (<= 0)')
             return False
         
         return True

@@ -2,8 +2,10 @@ import os
 from dotenv import load_dotenv
 import logging
 import requests
-from typing import Dict, Any, Optional
+from typing import List, Dict, Any, Optional
 import pandas as pd
+from collections import Counter
+import numpy as np
 
 
 logging.basicConfig(level=logging.INFO)
@@ -78,14 +80,8 @@ class CoinGeckoClient:
         tickers_data = raw_data.get('tickers', [])
         developer_data = raw_data.get('developer_data', {})
 
-        tickers_info = [
-            {
-                'last': t.get('last'),
-                'volume': t.get('volume'),
-                'trust_score': t.get('trust_score')
-            }
-            for t in tickers_data if isinstance(t, dict)
-        ]
+        ticker_features = self.extract_tickers_features(tickers_data)
+        
         
         return {
             # Identificación
@@ -96,9 +92,7 @@ class CoinGeckoClient:
             # Datos de desarrolladores
             'dev_stars': developer_data.get('stars'),  #Confianza en developers
             'forks': developer_data.get('forks'), #Actividad en el desarrollo
-            'pull_merge_request': developer_data.get('pull_requests_merged'), #Actividad en el desarrollo
-
-            
+            'pull_merge_request': developer_data.get('pull_requests_merged'), #Actividad en el desarrollo           
             
             # Comunidad y Sentimiento
             ## Indicador de sentimiento alcista o bajista entre traders
@@ -122,6 +116,16 @@ class CoinGeckoClient:
             'total_supply': market_data.get('total_supply'),
             'max_supply': market_data.get('max_supply'), #Escasez programada es un factor deflacionario clave
             
+            # Datos de Exchanges
+            'avg_last_price_usd':ticker_features.get('avg_last_price'),
+            'avg_volume':ticker_features.get('avg_volume'),
+            'trust_green_count': ticker_features.get('trust_green_count'),
+            'trust_yellow_count': ticker_features.get('trust_yellow_count'),
+            'trust_red_count': ticker_features.get('trust_red_count'),
+            'trust_green_pct': ticker_features.get('trust_green_pct'),
+            'trust_yellow_pct': ticker_features.get('trust_yellow_pct'),
+            'trust_red_pct': ticker_features.get('trust_red_pct'),
+
             # Datos Historicos
             'ath': market_data.get('ath', {}).get('usd'),
             'ath_change': market_data.get('ath_change_percentage', {}).get('usd'),
@@ -129,16 +133,12 @@ class CoinGeckoClient:
             'price_1d_ago': market_data.get('price_change_percentage_24h_in_currency',{}).get('usd'),
             'price_7d_ago': market_data.get('price_change_percentage_7d_in_currency', {}).get('usd'),
 
-
             # Actividad de red
             'block_time': raw_data.get('block_time_in_minutes'), #Afecta la emisión de nuevos CC y costos de minería.
             'hashing_alg': raw_data.get('hashing_algorithm'), #Seguridad de la red -> impacta confianza}
 
-            # Datos de Exchanges
-            'tickers':tickers_info,         
-            
             # Metadata
-            'last_updated': raw_data.get('last_updated')
+            'last_updated': market_data.get('last_updated') or raw_data.get('last_updated')
         }
     
     def get_clean_metrics(self, coin_id: str) -> Dict[str, Any]:
@@ -157,3 +157,36 @@ class CoinGeckoClient:
         )
         
         return metrics
+    
+    def extract_tickers_features(self, tickers: List[Dict[str, Any]]) -> Dict[str, Any]:
+        if not tickers:
+            return {
+                'avg_last_price': None,
+                'avg_volume': None,
+                'trust_green_count': 0,
+                'trust_yellow_count': 0,
+                'trust_red_count': 0,
+                'trust_green_pct': 0.0,
+                'trust_yellow_pct': 0.0,
+                'trust_red_pct': 0.0
+            }
+        
+        #Filtro para last y volume de tickers
+        last_prices = [t.get('last') for t in tickers if isinstance(t.get('last'),(int, float))]
+        volumes = [t.get('volume') for t in tickers if isinstance(t.get('volume'), (int, float))]
+
+        #Trust Score
+        trust_scores = [t.get('trust_score') for t in tickers if t.get('trust_score') in ['green', 'yellow', 'red']]
+        trust_counts = Counter(trust_scores)
+        total_trust = sum(trust_counts.values()) or 1
+
+        return {
+            'avg_last_price': np.mean(last_prices) if last_prices else None,
+            'avg_volume': np.mean(volumes) if volumes else None,
+            'trust_green_count': trust_counts.get('green', 0),
+            'trust_yellow_count': trust_counts.get('yellow', 0),
+            'trust_red_count': trust_counts.get('red', 0),
+            'trust_green_pct': trust_counts.get('green', 0) / total_trust,
+            'trust_yellow_pct': trust_counts.get('yellow', 0) / total_trust,
+            'trust_red_pct': trust_counts.get('red', 0) / total_trust,
+        }
